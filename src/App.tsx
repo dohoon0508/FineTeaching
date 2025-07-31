@@ -53,6 +53,10 @@ const sampleQuestions: Question[] = [
 function App() {
   const [currentStep, setCurrentStep] = useState<'intro' | 'quiz'>('intro');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedLanguage, setSelectedLanguage] = useState<'ko' | 'en'>('ko');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const [summary, setSummary] = useState('');
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState('');
   const [userAnswers, setUserAnswers] = useState<{ [key: number]: string }>({});
@@ -65,6 +69,36 @@ function App() {
     const file = event.target.files?.[0];
     if (file) {
       setSelectedFile(file);
+      setTranscript('');
+      setSummary('');
+    }
+  };
+
+  const handleProcessAudio = async () => {
+    if (!selectedFile) return;
+
+    setIsProcessing(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('lang', selectedLanguage);
+
+      const response = await fetch('http://localhost:8000/upload-audio/', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setTranscript(data.transcript);
+        setSummary(data.summary);
+      } else {
+        console.error('Audio processing failed');
+      }
+    } catch (error) {
+      console.error('Error processing audio:', error);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -206,6 +240,33 @@ function App() {
                   <h3 className="text-2xl font-bold text-gray-800 mb-3">음성 파일 업로드</h3>
                   <p className="text-gray-600 mb-6">MP3, M4A, WAV 파일을 지원합니다</p>
                   
+                  {/* Language Selection */}
+                  <div className="mb-6">
+                    <label className="block text-sm font-bold text-gray-700 mb-3">🌍 언어 선택</label>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setSelectedLanguage('ko')}
+                        className={`flex-1 py-3 px-6 rounded-xl text-sm font-bold transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 ${
+                          selectedLanguage === 'ko'
+                            ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white'
+                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        }`}
+                      >
+                        🇰🇷 한국어
+                      </button>
+                      <button
+                        onClick={() => setSelectedLanguage('en')}
+                        className={`flex-1 py-3 px-6 rounded-xl text-sm font-bold transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 ${
+                          selectedLanguage === 'en'
+                            ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white'
+                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        }`}
+                      >
+                        🇺🇸 English
+                      </button>
+                    </div>
+                  </div>
+                  
                   <label className="block w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold py-4 px-8 rounded-2xl cursor-pointer transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105">
                     📁 파일 선택하기
                     <input
@@ -232,17 +293,44 @@ function App() {
                         </div>
                       </div>
                     </div>
-                    <div className="flex gap-3">
-                      <button className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold py-3 px-4 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105">
-                        📄 요약 다운로드
-                      </button>
+                    
+                    {!transcript && !summary && (
                       <button
-                        onClick={handleStartQuiz}
-                        className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold py-3 px-4 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105"
+                        onClick={handleProcessAudio}
+                        disabled={isProcessing}
+                        className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 disabled:from-gray-400 disabled:to-gray-500 text-white font-bold py-4 px-6 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 disabled:cursor-not-allowed disabled:hover:scale-100"
                       >
-                        🎯 문제 풀기
+                        {isProcessing ? '🔄 처리 중...' : '🎤 음성 처리하기'}
                       </button>
-                    </div>
+                    )}
+
+                    {transcript && summary && (
+                      <div className="space-y-4">
+                        <div className="bg-gradient-to-r from-blue-50 to-cyan-50 rounded-2xl p-4 border border-blue-200">
+                          <h4 className="text-sm font-bold text-blue-800 mb-2 flex items-center gap-2">
+                            📝 원문
+                          </h4>
+                          <p className="text-sm text-blue-700 leading-relaxed">{transcript}</p>
+                        </div>
+                        <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl p-4 border border-green-200">
+                          <h4 className="text-sm font-bold text-green-800 mb-2 flex items-center gap-2">
+                            📋 요약
+                          </h4>
+                          <p className="text-sm text-green-700 leading-relaxed">{summary}</p>
+                        </div>
+                        <div className="flex gap-3">
+                          <button className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold py-3 px-4 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105">
+                            📄 요약 다운로드
+                          </button>
+                          <button
+                            onClick={handleStartQuiz}
+                            className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold py-3 px-4 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105"
+                          >
+                            🎯 문제 풀기
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
