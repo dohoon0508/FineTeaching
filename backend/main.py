@@ -95,28 +95,34 @@ async def quiz(
     target_lang: str = Form("ko"),
     lecture_title: str = Form("")
 ):
-    # 객관식 문제 5개 생성 (더 안정적인 프롬프트)
+    # 객관식 문제 5개 생성 (더 강화된 프롬프트)
     if target_lang == "en":
         sys = (
             f"You are creating multiple choice questions for a lecture about '{lecture_title}'. "
             "Create exactly 5 questions with 4 options each (A, B, C, D). "
             "Each question should test understanding of key concepts from the lecture. "
-            "Return ONLY a valid JSON array with this exact structure:\n"
+            "CRITICAL: You must return ONLY a valid JSON array. No other text, no explanations, no markdown formatting. "
+            "The response must start with '[' and end with ']'. "
+            "Use this exact structure:\n"
             "[\n"
             '  {"id": 1, "question": "Question text?", "options": {"A": "Option A", "B": "Option B", "C": "Option C", "D": "Option D"}, "correct": "A", "explanation": "Explanation why A is correct"},\n'
+            '  {"id": 2, "question": "Question text?", "options": {"A": "Option A", "B": "Option B", "C": "Option C", "D": "Option D"}, "correct": "B", "explanation": "Explanation why B is correct"}\n'
             "]\n"
-            "Do not include any other text or formatting."
+            "Remember: ONLY JSON array, nothing else."
         )
     else:
         sys = (
             f"너는 '{lecture_title}' 강의에 대한 객관식 문제를 만드는 교육 전문가야. "
             "정확히 5개의 문제를 만들어줘. 각 문제는 4지선다(A, B, C, D)야. "
             "각 문제는 강의의 핵심 개념에 대한 이해를 평가해야 해. "
-            "다음 JSON 배열 형식으로만 반환해줘:\n"
+            "중요: 반드시 JSON 배열만 반환해야 해. 다른 텍스트, 설명, 마크다운 형식 없이. "
+            "응답은 '['로 시작하고 ']'로 끝나야 해. "
+            "다음 정확한 구조를 사용해줘:\n"
             "[\n"
             '  {"id": 1, "question": "문제 텍스트?", "options": {"A": "보기 A", "B": "보기 B", "C": "보기 C", "D": "보기 D"}, "correct": "A", "explanation": "A가 정답인 이유 설명"},\n'
+            '  {"id": 2, "question": "문제 텍스트?", "options": {"A": "보기 A", "B": "보기 B", "C": "보기 C", "D": "보기 D"}, "correct": "B", "explanation": "B가 정답인 이유 설명"}\n'
             "]\n"
-            "다른 텍스트나 형식은 포함하지 말고, JSON 배열만 반환해줘."
+            "기억해: JSON 배열만, 다른 것 없이."
         )
     
     resp = client.responses.create(
@@ -128,13 +134,33 @@ async def quiz(
     )
     out = resp.output[0].content[0].text if hasattr(resp, "output") else ""
     
-    # JSON 파싱 시도
+    # 디버깅을 위한 로그 출력
+    print(f"GPT API Response: {out[:200]}...")  # 처음 200자만 출력
+    
+    # 응답 후처리: JSON 배열만 추출
     try:
+        # JSON 배열 시작과 끝 찾기
+        start_idx = out.find('[')
+        end_idx = out.rfind(']')
+        
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            json_str = out[start_idx:end_idx + 1]
+            print(f"Extracted JSON: {json_str[:200]}...")
+        else:
+            json_str = out
+            print("No JSON brackets found, using full response")
+        
+        # JSON 파싱 시도
         import json
-        questions = json.loads(out)
+        questions = json.loads(json_str)
+        print(f"Successfully parsed {len(questions)} questions")
         return {"questions": questions}
-    except:
-        # JSON 파싱 실패 시 빈 배열 반환
+    except json.JSONDecodeError as e:
+        print(f"JSON parsing failed: {e}")
+        print(f"Full response: {out}")
+        
+        # JSON 파싱 실패 시 빈 배열 반환 (예시 문제 없음)
+        print("Returning empty questions array - no default questions")
         return {"questions": []}
 
 @app.post("/submit-answer")
