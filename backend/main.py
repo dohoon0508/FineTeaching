@@ -3,9 +3,25 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
+from pptx import Presentation
+import PyPDF2
+from io import BytesIO
 
 load_dotenv()
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# OpenAI 클라이언트 초기화
+api_key = os.getenv("OPENAI_API_KEY")
+if not api_key:
+    raise ValueError("OPENAI_API_KEY environment variable is not set")
+
+# ASCII로 인코딩 가능한지 확인
+try:
+    api_key.encode('ascii')
+except UnicodeEncodeError:
+    # API 키에 비-ASCII 문자가 있으면 제거
+    api_key = api_key.encode('ascii', errors='ignore').decode('ascii').strip()
+
+client = OpenAI(api_key=api_key)
 
 app = FastAPI()
 app.add_middleware(
@@ -14,6 +30,58 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "message": "Server is running"}
+
+@app.post("/test-openai")
+async def test_openai():
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Say hello"}
+            ]
+        )
+        return {"status": "success", "response": response.choices[0].message.content}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+def extract_text_from_pptx(file_content: bytes) -> str:
+    """PPTX 파일에서 텍스트 추출"""
+    try:
+        presentation = Presentation(BytesIO(file_content))
+        text_content = []
+        
+        for slide_num, slide in enumerate(presentation.slides, 1):
+            text_content.append(f"=== 슬라이드 {slide_num} ===")
+            
+            for shape in slide.shapes:
+                if hasattr(shape, "text") and shape.text.strip():
+                    text_content.append(shape.text.strip())
+            
+            text_content.append("")  # 슬라이드 간 구분을 위한 빈 줄
+        
+        return "\n".join(text_content)
+    except Exception as e:
+        return f"PPTX 파일 처리 중 오류 발생: {str(e)}"
+
+def extract_text_from_pdf(file_content: bytes) -> str:
+    """PDF 파일에서 텍스트 추출"""
+    try:
+        pdf_reader = PyPDF2.PdfReader(BytesIO(file_content))
+        text_content = []
+        
+        for page_num, page in enumerate(pdf_reader.pages, 1):
+            text_content.append(f"=== 페이지 {page_num} ===")
+            text_content.append(page.extract_text())
+            text_content.append("")  # 페이지 간 구분을 위한 빈 줄
+        
+        return "\n".join(text_content)
+    except Exception as e:
+        return f"PDF 파일 처리 중 오류 발생: {str(e)}"
 
 @app.post("/stt")
 async def stt(
@@ -46,17 +114,98 @@ async def stt(
             "Return ONLY the translated content itself."
         )
         tgt = "English"
-    tr = client.responses.create(
+    tr = client.chat.completions.create(
         model="gpt-4o",  # 더 강력한 LLM
-        input=[
+        messages=[
             {"role":"system","content":sys},
             {"role":"user","content":f"Translate to {tgt}:\n\n{transcript}"}
         ]
     )
-    out = tr.output[0].content[0].text if hasattr(tr, "output") else transcript
+    out = tr.choices[0].message.content if tr.choices else transcript
     # 후처리: 안내문구 자동 제거
     out = re.sub(r"^(Sure, )?(here is the translation.*?:\s*)?-*\n*", "", out, flags=re.IGNORECASE)
     return {"language": ui_lang, "transcript": out}
+
+@app.post("/multimodal-upload")
+async def multimodal_upload(
+    files: list[UploadFile] = File(...),
+    ui_lang: str = Form("ko"),
+    lecture_title: str = Form("")
+):
+    """멀티모달 파일 업로드 및 텍스트 추출"""
+    print(f"Received {len(files)} files for lecture: {lecture_title}")
+    all_texts = []
+    
+    for file in files:
+        print(f"Processing file: {file.filename}")
+        file_content = await file.read()
+        file_extension = file.filename.split('.')[-1].lower()
+        
+        if file_extension == 'pptx':
+            extracted_text = extract_text_from_pptx(file_content)
+            all_texts.append(f"[PPT 파일: {file.filename}]\n{extracted_text}")
+        elif file_extension == 'pdf':
+            extracted_text = extract_text_from_pdf(file_content)
+            all_texts.append(f"[PDF 파일: {file.filename}]\n{extracted_text}")
+        elif file_extension in ['mp3', 'wav', 'm4a', 'ogg']:
+            # 기존 음성 파일 처리 로직
+            with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file.filename}") as tmp:
+                tmp.write(file_content)
+                audio_path = tmp.name
+            
+            tx = client.audio.transcriptions.create(
+                model="gpt-4o-transcribe",
+                file=open(audio_path, "rb"),
+                response_format="json"
+            )
+            transcript = tx.text
+            
+            # 언어 번역 처리
+            if ui_lang == "ko":
+                sys = (
+                    "You are a professional translator into Korean. "
+                    "Translate the following text into natural Korean. "
+                    "Do NOT add any explanations, introductions, or extra comments. "
+                    "Return ONLY the translated content itself."
+                )
+                tgt = "Korean"
+            else:
+                sys = (
+                    "You are a professional translator into English. "
+                    "Translate the following text into natural English. "
+                    "Do NOT add any explanations, introductions, or extra comments. "
+                    "Return ONLY the translated content itself."
+                )
+                tgt = "English"
+            
+            tr = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role":"system","content":sys},
+                    {"role":"user","content":f"Translate to {tgt}:\n\n{transcript}"}
+                ]
+            )
+            translated_text = tr.choices[0].message.content if tr.choices else transcript
+            translated_text = re.sub(r"^(Sure, )?(here is the translation.*?:\s*)?-*\n*", "", translated_text, flags=re.IGNORECASE)
+            
+            all_texts.append(f"[음성 파일: {file.filename}]\n{translated_text}")
+            
+            # 임시 파일 삭제
+            os.unlink(audio_path)
+        else:
+            all_texts.append(f"[지원하지 않는 파일 형식: {file.filename}]")
+    
+    # 모든 텍스트를 결합
+    combined_text = "\n\n".join(all_texts)
+    print(f"Combined text length: {len(combined_text)}")
+    print(f"First 200 chars: {combined_text[:200]}")
+    
+    return {
+        "language": ui_lang,
+        "combined_text": combined_text,
+        "file_count": len(files),
+        "lecture_title": lecture_title
+    }
 
 @app.post("/summarize")
 async def summarize(
@@ -64,30 +213,40 @@ async def summarize(
     target_lang: str = Form("ko"),
     lecture_title: str = Form("")
 ):
-    # 더 구체적인 프롬프트: 과목명 포함, 항목별, 표/번호/구조화, 예시/근거/결론/액션아이템 등
+    print(f"Summarizing lecture: {lecture_title}, lang: {target_lang}, text length: {len(text)}")
+    
+    # 영어로만 프롬프트 작성 (Unicode 인코딩 문제 방지)
     if target_lang == "en":
         sys = (
-            f"This lecture is about '{lecture_title}'. "
+            f"This lecture is about {lecture_title}. "
             "You are an expert at organizing lecture transcripts. Do not omit important content. "
-            "Instead, organize the text into clear, structured sections with headings (e.g., Main Topic, Key Points, Evidence, Examples, Conclusion, Action Items). "
+            "Organize the text into clear, structured sections with headings (e.g., Main Topic, Key Points, Evidence, Examples, Conclusion, Action Items). "
             "Use bullet points, numbering, or tables if appropriate. Do not summarize by shortening, but by structuring and clarifying."
         )
+        user_prompt = f"[Lecture Content]\n{text}"
     else:
         sys = (
-            f"이 강의는 '{lecture_title}'에 관한 것입니다. "
-            "너는 강의 내용을 체계적으로 정리하는 전문가야. 중요한 내용을 생략하지 말고, "
-            "항목별(예: 주제, 핵심, 근거, 예시, 결론, 액션아이템 등)로 명확하게 정돈해줘. "
-            "표, 번호, 불릿 등 구조화된 형태로 작성하고, 단순 요약(축약)하지 말고, 구조화/정돈 중심으로 작성해."
+            f"You are an expert at organizing Korean lecture transcripts about {lecture_title}. "
+            "Do not omit important content. Organize the text into clear, structured sections with Korean headings. "
+            "Use bullet points, numbering, or tables if appropriate. Do not summarize by shortening, but by structuring and clarifying. "
+            "Output must be in Korean."
         )
-    resp = client.responses.create(
-        model="gpt-4o",  # 더 강력한 LLM
-        input=[
-            {"role":"system","content":sys},
-            {"role":"user","content":f"[강의 원문]\n{text}"}
-        ]
-    )
-    out = resp.output[0].content[0].text if hasattr(resp, "output") else ""
-    return {"summary": out}
+        user_prompt = f"Please organize the following Korean lecture content:\n\n{text}"
+    
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role":"system","content":sys},
+                {"role":"user","content":user_prompt}
+            ]
+        )
+        out = resp.choices[0].message.content if resp.choices else ""
+        print(f"Summary generated, length: {len(out)}")
+        return {"summary": out}
+    except Exception as e:
+        print(f"Error in summarize: {e}")
+        raise
 
 @app.post("/quiz")
 async def quiz(
@@ -95,12 +254,13 @@ async def quiz(
     target_lang: str = Form("ko"),
     lecture_title: str = Form("")
 ):
-    # 객관식 문제 5개 생성 (더 강화된 프롬프트)
+    print(f"Creating quiz for lecture: {lecture_title}, lang: {target_lang}")
+    
+    # 영어로만 프롬프트 작성 (Unicode 인코딩 문제 방지)
     if target_lang == "en":
         sys = (
-            f"You are creating multiple choice questions for a lecture about '{lecture_title}'. "
+            f"You are creating multiple choice questions for a lecture about {lecture_title}. "
             "Create exactly 5 questions with 4 options each (A, B, C, D). "
-            "Each question should test understanding of key concepts from the lecture. "
             "CRITICAL: You must return ONLY a valid JSON array. No other text, no explanations, no markdown formatting. "
             "The response must start with '[' and end with ']'. "
             "Use this exact structure:\n"
@@ -110,29 +270,34 @@ async def quiz(
             "]\n"
             "Remember: ONLY JSON array, nothing else."
         )
+        user_prompt = f"[Lecture Content]\n{text}"
     else:
         sys = (
-            f"너는 '{lecture_title}' 강의에 대한 객관식 문제를 만드는 교육 전문가야. "
-            "정확히 5개의 문제를 만들어줘. 각 문제는 4지선다(A, B, C, D)야. "
-            "각 문제는 강의의 핵심 개념에 대한 이해를 평가해야 해. "
-            "중요: 반드시 JSON 배열만 반환해야 해. 다른 텍스트, 설명, 마크다운 형식 없이. "
-            "응답은 '['로 시작하고 ']'로 끝나야 해. "
-            "다음 정확한 구조를 사용해줘:\n"
+            f"You are creating Korean multiple choice questions for a lecture about {lecture_title}. "
+            "Create exactly 5 questions in Korean with 4 options each (A, B, C, D). "
+            "CRITICAL: You must return ONLY a valid JSON array. No other text, no explanations, no markdown formatting. "
+            "The response must start with '[' and end with ']'. "
+            "Use this exact structure (in Korean):\n"
             "[\n"
-            '  {"id": 1, "question": "문제 텍스트?", "options": {"A": "보기 A", "B": "보기 B", "C": "보기 C", "D": "보기 D"}, "correct": "A", "explanation": "A가 정답인 이유 설명"},\n'
-            '  {"id": 2, "question": "문제 텍스트?", "options": {"A": "보기 A", "B": "보기 B", "C": "보기 C", "D": "보기 D"}, "correct": "B", "explanation": "B가 정답인 이유 설명"}\n'
+            '  {"id": 1, "question": "Korean question text?", "options": {"A": "Korean option A", "B": "Korean option B", "C": "Korean option C", "D": "Korean option D"}, "correct": "A", "explanation": "Korean explanation why A is correct"},\n'
+            '  {"id": 2, "question": "Korean question text?", "options": {"A": "Korean option A", "B": "Korean option B", "C": "Korean option C", "D": "Korean option D"}, "correct": "B", "explanation": "Korean explanation why B is correct"}\n'
             "]\n"
-            "기억해: JSON 배열만, 다른 것 없이."
+            "Remember: ONLY JSON array, nothing else."
         )
+        user_prompt = f"Create Korean quiz questions for this Korean lecture content:\n\n{text}"
     
-    resp = client.responses.create(
-        model="gpt-4o",
-        input=[
-            {"role":"system","content":sys},
-            {"role":"user","content":f"[강의 내용]\n{text}"}
-        ]
-    )
-    out = resp.output[0].content[0].text if hasattr(resp, "output") else ""
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role":"system","content":sys},
+                {"role":"user","content":user_prompt}
+            ]
+        )
+    except Exception as e:
+        print(f"Error calling OpenAI API: {e}")
+        raise
+    out = resp.choices[0].message.content if resp.choices else ""
     
     # 디버깅을 위한 로그 출력
     print(f"GPT API Response: {out[:200]}...")  # 처음 200자만 출력

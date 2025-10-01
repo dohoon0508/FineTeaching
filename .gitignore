@@ -81,3 +81,6 @@ venv.bak/
 # Temporary files
 *.tmp
 *.temp
+backend/temp/
+backend/test_*.txt
+backend/test_*.pdf
