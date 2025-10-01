@@ -16,7 +16,7 @@ interface AnswerResult {
 }
 
 function App() {
-  const [currentStep, setCurrentStep] = useState<'intro' | 'processing' | 'results' | 'quiz' | 'quiz-results'>('intro');
+  const [currentStep, setCurrentStep] = useState<'landing' | 'intro' | 'processing' | 'results' | 'quiz' | 'quiz-results'>('landing');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [selectedLanguage, setSelectedLanguage] = useState<'ko' | 'en'>('ko');
   const [lectureTitle, setLectureTitle] = useState('');
@@ -244,9 +244,9 @@ function App() {
     URL.revokeObjectURL(url);
   };
 
-  // 메인으로 돌아가기
+  // 메인으로 돌아가기 (랜딩 페이지)
   const goHome = () => {
-    setCurrentStep('intro');
+    setCurrentStep('landing');
     setSelectedFiles([]);
     setTranscript('');
     setSummary('');
@@ -259,6 +259,19 @@ function App() {
     setProcessingProgress(0);
     setProcessingMessage('');
     setIsProcessing(false);
+  };
+
+  // 파일 선택 페이지로 이동
+  const goToFileSelect = () => {
+    setCurrentStep('intro');
+    setSelectedFiles([]);
+    setTranscript('');
+    setSummary('');
+    setQuestions([]);
+    setUserAnswers({});
+    setCorrectAnswers({});
+    setScore(0);
+    setIsGraded(false);
   };
 
   // --- UI 렌더링 ---
@@ -306,12 +319,20 @@ function App() {
         <div className="max-w-4xl mx-auto">
           {/* 헤더 */}
           <div className="flex justify-between items-center mb-8">
-            <button
-              onClick={goHome}
-              className="bg-white hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 rounded-md border transition-colors"
-            >
-              메인으로
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={goHome}
+                className="bg-white hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 rounded-md border transition-colors"
+              >
+                메인으로
+              </button>
+              <button
+                onClick={goToFileSelect}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors"
+              >
+                파일 선택하기
+              </button>
+            </div>
             <div className="text-center">
               <h1 className="text-2xl font-semibold text-gray-900">문제 풀이</h1>
               <p className="text-sm text-gray-600 mt-1">
@@ -387,12 +408,20 @@ function App() {
         <div className="max-w-4xl mx-auto">
           {/* 헤더 */}
           <div className="flex justify-between items-center mb-8">
-            <button
-              onClick={goHome}
-              className="bg-white hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 rounded-md border transition-colors"
-            >
-              메인으로
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={goHome}
+                className="bg-white hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 rounded-md border transition-colors"
+              >
+                메인으로
+              </button>
+              <button
+                onClick={goToFileSelect}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors"
+              >
+                파일 선택하기
+              </button>
+            </div>
             <div className="text-center">
               <h1 className="text-2xl font-semibold text-gray-900">채점 결과</h1>
               <p className="text-lg font-medium text-blue-600 mt-1">
@@ -507,12 +536,20 @@ function App() {
         <div className="max-w-4xl mx-auto">
           {/* 헤더 */}
           <div className="flex justify-between items-center mb-8">
-            <button
-              onClick={goHome}
-              className="bg-white hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 rounded-md border transition-colors"
-            >
-              메인으로
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={goHome}
+                className="bg-white hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 rounded-md border transition-colors"
+              >
+                메인으로
+              </button>
+              <button
+                onClick={goToFileSelect}
+                className="bg-white hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 rounded-md border transition-colors"
+              >
+                파일 선택하기
+              </button>
+            </div>
             <div className="text-center">
               <h1 className="text-2xl font-semibold text-gray-900">처리 결과</h1>
               <p className="text-sm text-gray-600 mt-1">파일 처리 완료</p>
@@ -556,7 +593,130 @@ function App() {
     );
   }
 
-  // 인트로(메인) 화면
+  // 랜딩 페이지
+  if (currentStep === 'landing') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
+        {/* 헤더 */}
+        <header className="border-b bg-white">
+          <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+            <h1 className="text-2xl font-bold text-blue-600">FineTeaching</h1>
+            <button
+              onClick={() => setCurrentStep('intro')}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-md transition-colors"
+            >
+              서비스 이용해보기
+            </button>
+          </div>
+        </header>
+
+        {/* 히어로 섹션 */}
+        <section className="max-w-7xl mx-auto px-4 py-20 text-center">
+          <h2 className="text-5xl font-bold text-gray-900 mb-6">
+            내 모든 학습 자료를<br />한눈에 정리하고 학습하세요
+          </h2>
+          <p className="text-xl text-gray-600 mb-12 max-w-3xl mx-auto">
+            음성 강의, PDF 자료, PPT 슬라이드를 자동으로 요약하고<br />
+            맞춤형 문제를 생성해주는 AI 학습 도우미
+          </p>
+          <button
+            onClick={() => setCurrentStep('intro')}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg py-4 px-12 rounded-lg transition-colors shadow-lg hover:shadow-xl"
+          >
+            시작하기
+          </button>
+        </section>
+
+        {/* 주요 기능 */}
+        <section className="max-w-7xl mx-auto px-4 py-20">
+          <h3 className="text-3xl font-bold text-center text-gray-900 mb-16">주요 기능</h3>
+          <div className="grid md:grid-cols-3 gap-8">
+            {/* 기능 1 */}
+            <div className="bg-white p-8 rounded-2xl shadow-sm border hover:shadow-md transition-shadow">
+              <div className="w-16 h-16 bg-blue-100 rounded-lg flex items-center justify-center mb-6">
+                <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+              </div>
+              <h4 className="text-xl font-semibold text-gray-900 mb-3">멀티모달 업로드</h4>
+              <p className="text-gray-600">
+                음성 파일, PDF, PPT를 동시에 업로드하고 통합 분석이 가능합니다
+              </p>
+            </div>
+
+            {/* 기능 2 */}
+            <div className="bg-white p-8 rounded-2xl shadow-sm border hover:shadow-md transition-shadow">
+              <div className="w-16 h-16 bg-green-100 rounded-lg flex items-center justify-center mb-6">
+                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <h4 className="text-xl font-semibold text-gray-900 mb-3">AI 자동 요약</h4>
+              <p className="text-gray-600">
+                복잡한 강의 내용을 AI가 핵심만 추려 구조화된 요약본을 제공합니다
+              </p>
+            </div>
+
+            {/* 기능 3 */}
+            <div className="bg-white p-8 rounded-2xl shadow-sm border hover:shadow-md transition-shadow">
+              <div className="w-16 h-16 bg-purple-100 rounded-lg flex items-center justify-center mb-6">
+                <svg className="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+              </div>
+              <h4 className="text-xl font-semibold text-gray-900 mb-3">맞춤형 문제 생성</h4>
+              <p className="text-gray-600">
+                학습 내용 기반으로 객관식 문제를 자동 생성하고 즉시 피드백을 제공합니다
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* 간단한 3단계 */}
+        <section className="max-w-7xl mx-auto px-4 py-20 bg-blue-50 rounded-3xl mb-20">
+          <h3 className="text-3xl font-bold text-center text-gray-900 mb-16">간단한 3단계</h3>
+          <div className="grid md:grid-cols-3 gap-12">
+            <div className="text-center">
+              <div className="w-20 h-20 bg-blue-600 text-white rounded-full flex items-center justify-center text-3xl font-bold mx-auto mb-6">1</div>
+              <h4 className="text-xl font-semibold text-gray-900 mb-3">파일 업로드</h4>
+              <p className="text-gray-600">음성, PDF, PPT 파일을 선택하고 강의명을 입력하세요</p>
+            </div>
+            <div className="text-center">
+              <div className="w-20 h-20 bg-blue-600 text-white rounded-full flex items-center justify-center text-3xl font-bold mx-auto mb-6">2</div>
+              <h4 className="text-xl font-semibold text-gray-900 mb-3">AI 자동 분석</h4>
+              <p className="text-gray-600">AI가 자동으로 내용을 분석하고 요약합니다</p>
+            </div>
+            <div className="text-center">
+              <div className="w-20 h-20 bg-blue-600 text-white rounded-full flex items-center justify-center text-3xl font-bold mx-auto mb-6">3</div>
+              <h4 className="text-xl font-semibold text-gray-900 mb-3">학습 및 문제풀이</h4>
+              <p className="text-gray-600">요약본을 확인하고 자동 생성된 문제로 학습하세요</p>
+            </div>
+          </div>
+        </section>
+
+        {/* CTA */}
+        <section className="max-w-4xl mx-auto px-4 py-20 text-center">
+          <h3 className="text-4xl font-bold text-gray-900 mb-6">지금 바로 시작하세요</h3>
+          <p className="text-xl text-gray-600 mb-8">AI가 당신의 학습을 도와드립니다</p>
+          <button
+            onClick={() => setCurrentStep('intro')}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg py-4 px-12 rounded-lg transition-colors shadow-lg hover:shadow-xl"
+          >
+            서비스 이용해보기
+          </button>
+        </section>
+
+        {/* 푸터 */}
+        <footer className="border-t bg-gray-50 mt-20">
+          <div className="max-w-7xl mx-auto px-4 py-8 text-center text-gray-600">
+            <p>© 2025 FineTeaching. All rights reserved.</p>
+          </div>
+        </footer>
+      </div>
+    );
+  }
+
+  // 인트로(파일 선택) 화면
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="min-h-screen flex items-center justify-center p-4">
